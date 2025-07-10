@@ -29,15 +29,33 @@ def send_to_wechat(title, content):
             "title": title,
             "desp": content
         }
-        try:
-            response = requests.post(url, data=data)
-            if response.status_code == 200:
-                success_count += 1
-                print(f"✅ 微信通知发送成功 (SendKey: {sendkey[:8]}...)")
-            else:
-                print(f"❌ 微信通知发送失败 (SendKey: {sendkey[:8]}...): {response.text}")
-        except Exception as e:
-            print(f"❌ 微信通知发送出错 (SendKey: {sendkey[:8]}...): {str(e)}")
+        
+        # 最多重试3次
+        max_retries = 3
+        current_retry = 0
+        
+        while current_retry < max_retries:
+            try:
+                # 设置超时时间为30秒
+                response = requests.post(url, data=data, timeout=30)
+                if response.status_code == 200:
+                    success_count += 1
+                    print(f"✅ 微信通知发送成功 (SendKey: {sendkey[:8]}...)")
+                    break  # 发送成功，跳出重试循环
+                else:
+                    print(f"❌ 微信通知发送失败 (SendKey: {sendkey[:8]}...): {response.text}")
+            except requests.exceptions.Timeout:
+                print(f"⚠️ 发送超时 (SendKey: {sendkey[:8]}...) - 第{current_retry + 1}次重试")
+            except requests.exceptions.SSLError as e:
+                print(f"⚠️ SSL错误 (SendKey: {sendkey[:8]}...) - 第{current_retry + 1}次重试: {str(e)}")
+            except requests.exceptions.ConnectionError as e:
+                print(f"⚠️ 连接错误 (SendKey: {sendkey[:8]}...) - 第{current_retry + 1}次重试: {str(e)}")
+            except Exception as e:
+                print(f"❌ 微信通知发送出错 (SendKey: {sendkey[:8]}...) - 第{current_retry + 1}次重试: {str(e)}")
+            
+            current_retry += 1
+            if current_retry < max_retries:
+                time.sleep(2)  # 重试前等待2秒
     
     return success_count > 0  # 只要有一个发送成功就返回True
 
@@ -79,15 +97,15 @@ if __name__ == "__main__":
         exit(1)
 
     print("开始监控票务状态...")
-    print("程序将每90秒检查一次，每小时汇总发送结果")
+    print("程序将每90秒检查一次，每30分钟汇总发送结果")
     print("如果检测到有票，将立即发送通知")
     
     check_count = 0  # 用于记录检查次数
     detail_url = "https://detail.damai.cn/item.htm?spm=a2oeg.search_category.0.0.405c6da8qInG0t&id=949054108704&clicktitle=2025林丹杯羽毛球公开赛(西安站)"
     
-    # 用于记录每小时的检查结果
-    hourly_results = []
-    last_send_hour = datetime.now().hour
+    # 用于记录每5分钟的检查结果
+    check_results = []
+    last_send_time = datetime.now()
     
     with sync_playwright() as playwright:
         while True:
@@ -107,7 +125,7 @@ if __name__ == "__main__":
                             'status': status,
                             'count': check_count
                         }
-                        hourly_results.append(result)
+                        check_results.append(result)
                         print(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 当前无票，显示'提交缺货登记'")
                     else:
                         status = "✅ 有票"
@@ -116,7 +134,7 @@ if __name__ == "__main__":
                             'status': status,
                             'count': check_count
                         }
-                        hourly_results.append(result)
+                        check_results.append(result)
                         print(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 当前有票！")
                         
                         # 有票时立即发送通知
@@ -130,25 +148,28 @@ if __name__ == "__main__":
                         'status': status,
                         'count': check_count
                     }
-                    hourly_results.append(result)
+                    check_results.append(result)
                     print(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 状态检查失败")
                 
-                # 检查是否需要发送每小时汇总
-                if current_time.hour != last_send_hour and hourly_results:
+                # 检查是否需要发送30分钟汇总
+                time_diff = (current_time - last_send_time).total_seconds()
+                if time_diff >= 1800 and check_results:  # 1800秒 = 30分钟
                     # 准备汇总信息
-                    summary = f"过去一小时内共检查 {len(hourly_results)} 次\n\n"
-                    for result in hourly_results:
+                    summary = f"过去30分钟内共检查 {len(check_results)} 次\n\n"
+                    for result in check_results:
                         summary += f"[{result['status']}] {result['time']} (第{result['count']}次检查)\n"
                     
                     # 发送汇总通知
+                    last_time_str = last_send_time.strftime("%H:%M")
+                    current_time_str = current_time.strftime("%H:%M")
                     send_to_wechat(
-                        f"林丹杯门票监控汇总 ({last_send_hour}:00-{current_time.hour}:00)", 
+                        f"林丹杯门票监控汇总 ({last_time_str}-{current_time_str})", 
                         summary
                     )
                     
                     # 清空并更新记录
-                    hourly_results = []
-                    last_send_hour = current_time.hour
+                    check_results = []
+                    last_send_time = current_time
                 
                 # 等待90秒
                 print("等待90秒后进行下一次检查...")
@@ -157,9 +178,9 @@ if __name__ == "__main__":
             except KeyboardInterrupt:
                 print("\n程序已终止")
                 # 发送最后的汇总
-                if hourly_results:
-                    summary = f"最后一批结果，共 {len(hourly_results)} 次检查\n\n"
-                    for result in hourly_results:
+                if check_results:
+                    summary = f"最后一批结果，共 {len(check_results)} 次检查\n\n"
+                    for result in check_results:
                         summary += f"[{result['status']}] {result['time']} (第{result['count']}次检查)\n"
                     send_to_wechat("⚠️ 监控程序已停止运行", f"停止时间：{current_time.strftime('%Y-%m-%d %H:%M:%S')}\n\n{summary}")
                 else:
@@ -168,7 +189,7 @@ if __name__ == "__main__":
             except Exception as e:
                 error_msg = f"程序运行错误: {str(e)}"
                 print(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] {error_msg}")
-                hourly_results.append({
+                check_results.append({
                     'time': current_time.strftime("%Y-%m-%d %H:%M:%S"),
                     'status': "❌ 错误",
                     'count': check_count
