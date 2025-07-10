@@ -97,13 +97,13 @@ if __name__ == "__main__":
         exit(1)
 
     print("开始监控票务状态...")
-    print("程序将每90秒检查一次，每30分钟汇总发送结果")
+    print("程序将每1分钟检查一次，每个整点和半点（如14:00和14:30）发送汇总")
     print("如果检测到有票，将立即发送通知")
     
     check_count = 0  # 用于记录检查次数
     detail_url = "https://detail.damai.cn/item.htm?spm=a2oeg.search_category.0.0.405c6da8qInG0t&id=949054108704&clicktitle=2025林丹杯羽毛球公开赛(西安站)"
     
-    # 用于记录每5分钟的检查结果
+    # 用于记录检查结果
     check_results = []
     last_send_time = datetime.now()
     
@@ -151,11 +151,13 @@ if __name__ == "__main__":
                     check_results.append(result)
                     print(f"[{current_time.strftime('%Y-%m-%d %H:%M:%S')}] 状态检查失败")
                 
-                # 检查是否需要发送30分钟汇总
+                # 检查是否需要发送汇总（在整点或半点时发送）
+                current_minute = current_time.minute
+                # 如果是整点（0分）或半点（30分），且距离上次发送已经过了至少25分钟
                 time_diff = (current_time - last_send_time).total_seconds()
-                if time_diff >= 1800 and check_results:  # 1800秒 = 30分钟
+                if (current_minute == 0 or current_minute == 30) and time_diff >= 1500 and check_results:  # 1500秒 = 25分钟
                     # 准备汇总信息
-                    summary = f"过去30分钟内共检查 {len(check_results)} 次\n\n"
+                    summary = f"过去一段时间内共检查 {len(check_results)} 次\n\n"
                     for result in check_results:
                         summary += f"[{result['status']}] {result['time']} (第{result['count']}次检查)\n"
                     
@@ -171,9 +173,9 @@ if __name__ == "__main__":
                     check_results = []
                     last_send_time = current_time
                 
-                # 等待90秒
-                print("等待90秒后进行下一次检查...")
-                time.sleep(90)
+                # 等待60秒
+                print("等待60秒后进行下一次检查...")
+                time.sleep(60)
                 
             except KeyboardInterrupt:
                 print("\n程序已终止")
@@ -194,4 +196,4 @@ if __name__ == "__main__":
                     'status': "❌ 错误",
                     'count': check_count
                 })
-                time.sleep(90)  # 发生错误时也等待90秒后继续
+                time.sleep(60)  # 发生错误时也等待60秒后继续
