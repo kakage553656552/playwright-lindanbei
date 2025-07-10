@@ -4,31 +4,42 @@ import time
 from datetime import datetime
 import requests
 
-# Server酱配置
-SERVERCHAN_SENDKEY = "SCT289346TquqwvKt2hb5zNQjJtFyHrCdJ"  # 替换成你的SendKey
+# Server酱配置 - 支持多个SendKey
+SERVERCHAN_SENDKEYS = [
+    "SCT289346TquqwvKt2hb5zNQjJtFyHrCdJ",  # 第一个用户的SendKey
+    "SCT289376TCeoFNBvYVpnCtcGCELSuqwG6"
+    # "YOUR_SENDKEY_2_HERE",  # 第二个用户的SendKey
+    # "YOUR_SENDKEY_3_HERE",  # 第三个用户的SendKey
+    # 可以继续添加更多SendKey
+]
 
 def send_to_wechat(title, content):
-    """使用Server酱发送消息到微信"""
-    if not SERVERCHAN_SENDKEY or SERVERCHAN_SENDKEY == "YOUR_SENDKEY_HERE":
-        print("⚠️ 请先设置Server酱的SendKey")
+    """使用Server酱发送消息到多个微信用户"""
+    if not SERVERCHAN_SENDKEYS:
+        print("⚠️ 请先设置至少一个Server酱的SendKey")
         return False
-        
-    url = f"https://sctapi.ftqq.com/{SERVERCHAN_SENDKEY}.send"
-    data = {
-        "title": title,
-        "desp": content
-    }
-    try:
-        response = requests.post(url, data=data)
-        if response.status_code == 200:
-            print("✅ 微信通知发送成功")
-            return True
-        else:
-            print(f"❌ 微信通知发送失败: {response.text}")
-            return False
-    except Exception as e:
-        print(f"❌ 微信通知发送出错: {str(e)}")
-        return False
+    
+    success_count = 0
+    for sendkey in SERVERCHAN_SENDKEYS:
+        if sendkey == "YOUR_SENDKEY_2_HERE" or sendkey == "YOUR_SENDKEY_3_HERE":
+            continue  # 跳过未配置的SendKey
+            
+        url = f"https://sctapi.ftqq.com/{sendkey}.send"
+        data = {
+            "title": title,
+            "desp": content
+        }
+        try:
+            response = requests.post(url, data=data)
+            if response.status_code == 200:
+                success_count += 1
+                print(f"✅ 微信通知发送成功 (SendKey: {sendkey[:8]}...)")
+            else:
+                print(f"❌ 微信通知发送失败 (SendKey: {sendkey[:8]}...): {response.text}")
+        except Exception as e:
+            print(f"❌ 微信通知发送出错 (SendKey: {sendkey[:8]}...): {str(e)}")
+    
+    return success_count > 0  # 只要有一个发送成功就返回True
 
 def check_ticket_availability(playwright):
     browser = None
@@ -62,8 +73,8 @@ def check_ticket_availability(playwright):
 
 
 if __name__ == "__main__":
-    if SERVERCHAN_SENDKEY == "YOUR_SENDKEY_HERE":
-        print("⚠️ 请先将代码中的 SERVERCHAN_SENDKEY 替换为你的SendKey")
+    if not SERVERCHAN_SENDKEYS or all(key in ["YOUR_SENDKEY_2_HERE", "YOUR_SENDKEY_3_HERE"] for key in SERVERCHAN_SENDKEYS):
+        print("⚠️ 请先在代码中的 SERVERCHAN_SENDKEYS 列表中添加你的SendKey")
         print("获取SendKey: https://sct.ftqq.com/")
         exit(1)
 
